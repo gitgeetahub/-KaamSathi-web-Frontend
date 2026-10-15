@@ -312,12 +312,16 @@ function App() {
   // Auth State
   const [authProfile, setAuthProfile] = useState(null);
   const [authReady, setAuthReady] = useState(() => !localStorage.getItem("kaamsathi_token"));
+  const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [loginMode, setLoginMode] = useState("admin");
   const [loginPhone, setLoginPhone] = useState("");
   const [loginPin, setLoginPin] = useState("");
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [loginFullName, setLoginFullName] = useState("");
+  const [loginDailyWage, setLoginDailyWage] = useState("500");
   const [loginError, setLoginError] = useState("");
+  const [loginSuccess, setLoginSuccess] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
 
   // Worker Portal Data
@@ -395,6 +399,52 @@ function App() {
       setLoginPassword("");
     } catch (error) {
       setLoginError(error.response?.data?.message || error.message || "Could not log in.");
+    } finally {
+      setLoginBusy(false);
+    }
+  }
+
+  async function submitRegister(event) {
+    event.preventDefault();
+    setLoginError("");
+    setLoginSuccess("");
+    setLoginBusy(true);
+    try {
+      const payload =
+        loginMode === "admin"
+          ? {
+              role: "admin",
+              username: loginUsername.trim(),
+              password: loginPassword,
+              preferred_language: selectedLanguage,
+            }
+          : {
+              role: loginMode,
+              full_name: loginFullName.trim(),
+              phone: loginPhone.trim(),
+              pin: loginPin.trim(),
+              daily_wage: Number(loginDailyWage) || 500,
+              preferred_language: selectedLanguage,
+            };
+      const response = await api.post("/auth/register", payload);
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || "Registration failed.");
+      }
+      if (response.data.token && response.data.profile) {
+        localStorage.setItem("kaamsathi_token", response.data.token);
+        const nextProfile = response.data.profile || {};
+        nextProfile.preferred_language = nextProfile.preferred_language || selectedLanguage;
+        localStorage.setItem("kaamsathi_language", nextProfile.preferred_language);
+        setSelectedLanguage(nextProfile.preferred_language);
+        setAuthProfile(nextProfile);
+        setLoginPin("");
+        setLoginPassword("");
+      } else {
+        setLoginSuccess("Account registered successfully! Please log in.");
+        setIsRegisterMode(false);
+      }
+    } catch (error) {
+      setLoginError(error.response?.data?.message || error.message || "Could not register.");
     } finally {
       setLoginBusy(false);
     }
@@ -640,15 +690,73 @@ function App() {
           </div>
         </header>
 
-        {/* 1. LOGIN VIEW */}
+        {/* 1. LOGIN / REGISTER VIEW */}
         {!authProfile ? (
           <div className="login-corridor">
             <div className="login-card">
               <div className="app-badge">KAAMSATHI</div>
               <h1>Kaam bhi, hisaab bhi</h1>
-              <p>Log in to view your work account.</p>
+              <p>{isRegisterMode ? "Create a new account on KaamSathi." : "Log in to view your work account."}</p>
 
-              <form onSubmit={submitLogin}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "6px",
+                  marginBottom: "20px",
+                  background: "#f1f5f9",
+                  padding: "4px",
+                  borderRadius: "10px",
+                }}
+              >
+                <button
+                  type="button"
+                  style={{
+                    flex: 1,
+                    padding: "9px 12px",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontWeight: "700",
+                    fontSize: "14px",
+                    cursor: "pointer",
+                    background: !isRegisterMode ? "#1e5128" : "transparent",
+                    color: !isRegisterMode ? "#ffffff" : "#64748b",
+                    boxShadow: !isRegisterMode ? "0 2px 8px rgba(30, 81, 40, 0.25)" : "none",
+                    transition: "all 0.2s ease",
+                  }}
+                  onClick={() => {
+                    setIsRegisterMode(false);
+                    setLoginError("");
+                    setLoginSuccess("");
+                  }}
+                >
+                  Log in
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    flex: 1,
+                    padding: "9px 12px",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontWeight: "700",
+                    fontSize: "14px",
+                    cursor: "pointer",
+                    background: isRegisterMode ? "#1e5128" : "transparent",
+                    color: isRegisterMode ? "#ffffff" : "#64748b",
+                    boxShadow: isRegisterMode ? "0 2px 8px rgba(30, 81, 40, 0.25)" : "none",
+                    transition: "all 0.2s ease",
+                  }}
+                  onClick={() => {
+                    setIsRegisterMode(true);
+                    setLoginError("");
+                    setLoginSuccess("");
+                  }}
+                >
+                  Register
+                </button>
+              </div>
+
+              <form onSubmit={isRegisterMode ? submitRegister : submitLogin}>
                 <div className="login-form-group">
                   <label htmlFor="kaamsathi-language">Choose language</label>
                   <select
@@ -669,7 +777,7 @@ function App() {
                 </div>
 
                 <div className="login-form-group">
-                  <label>Login as</label>
+                  <label>{isRegisterMode ? "Register as" : "Login as"}</label>
                   <select
                     className="login-input"
                     value={loginMode}
@@ -680,6 +788,19 @@ function App() {
                     <option value="gutha_leader">Gutha Leader</option>
                   </select>
                 </div>
+
+                {isRegisterMode && loginMode !== "admin" && (
+                  <div className="login-form-group">
+                    <label>Full Name</label>
+                    <input
+                      className="login-input"
+                      value={loginFullName}
+                      onChange={(e) => setLoginFullName(e.target.value)}
+                      placeholder="e.g. Ramesh Kumar"
+                      required
+                    />
+                  </div>
+                )}
 
                 {loginMode === "admin" ? (
                   <>
@@ -703,7 +824,7 @@ function App() {
                         onChange={(e) => setLoginPassword(e.target.value)}
                         placeholder="••••••••"
                         required
-                        autoComplete="current-password"
+                        autoComplete={isRegisterMode ? "new-password" : "current-password"}
                       />
                     </div>
                   </>
@@ -721,8 +842,23 @@ function App() {
                         autoComplete="tel"
                       />
                     </div>
+                    {isRegisterMode && (
+                      <div className="login-form-group">
+                        <label>Daily wage (₹)</label>
+                        <input
+                          className="login-input"
+                          type="number"
+                          min="100"
+                          step="50"
+                          value={loginDailyWage}
+                          onChange={(e) => setLoginDailyWage(e.target.value)}
+                          placeholder="e.g. 500"
+                          required
+                        />
+                      </div>
+                    )}
                     <div className="login-form-group">
-                      <label>PIN</label>
+                      <label>PIN (4 to 8 digits)</label>
                       <input
                         className="login-input"
                         type="password"
@@ -732,10 +868,16 @@ function App() {
                         onChange={(e) => setLoginPin(e.target.value.replace(/\D/g, ""))}
                         placeholder="4 to 8 digit PIN"
                         required
-                        autoComplete="current-password"
+                        autoComplete={isRegisterMode ? "new-password" : "current-password"}
                       />
                     </div>
                   </>
+                )}
+
+                {loginSuccess && (
+                  <div style={{ color: "#16a34a", fontSize: "13px", margin: "10px 0", fontWeight: "600" }}>
+                    {loginSuccess}
+                  </div>
                 )}
 
                 {loginError && (
@@ -745,7 +887,7 @@ function App() {
                 )}
 
                 <button type="submit" disabled={loginBusy} className="login-submit-button">
-                  {loginBusy ? "Logging in…" : "Log in"}
+                  {loginBusy ? (isRegisterMode ? "Registering…" : "Logging in…") : (isRegisterMode ? "Register" : "Log in")}
                 </button>
               </form>
             </div>
